@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>5e Character Roller</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#8c2f1f">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{--bg:#f6f1e7;--card:#fffdf8;--ink:#2a2118;--mute:#7a6b58;--acc:#8c2f1f;--line:#e2d7c3;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17130f;--card:#221c16;--ink:#f0e6d4;--mute:#a8987f;--acc:#e0705a;--line:#3a3025;color-scheme:dark}}
@@ -429,6 +432,7 @@ async function copy(){
 }
 $('roll').onclick=gen;$('copy').onclick=copy;
 gen();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
 </html>

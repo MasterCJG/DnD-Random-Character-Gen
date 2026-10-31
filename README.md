@@ -1,6 +1,6 @@
 # 5e Character Roller
 
-A single-page web app that randomly generates a complete Dungeons & Dragons 5th Edition character sheet. 
+A single-page web app that randomly generates a complete Dungeons & Dragons 5th Edition character sheet.
 
 ## Features
 
@@ -26,6 +26,12 @@ Open `index.html` in any modern browser. No build step or dependencies.
 2. Go to **Settings > Pages**.
 3. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/ (root)`, then save.
 4. After a minute, the site is live at `https://<your-username>.github.io/<repo-name>/`.
+
+## Install as an Android app
+
+Open the live site in Chrome, tap the three-dot menu, then tap **Install app** (or **Add to Home screen**). The app opens full-screen and works offline after the first visit.
+
+When you change `index.html`, bump the `CACHE` version in `sw.js` so installed copies update.
 
 ## Customizing
 
