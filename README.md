@@ -1,6 +1,6 @@
 # 5e Character Roller
 
-A single-page web app that randomly generates a complete Dungeons & Dragons 5th Edition character sheet.
+A single-page web app that randomly generates a complete Dungeons & Dragons 5th Edition character sheet. 
 
 ## Features
 
