@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>5e Character Roller</title>
+<style>
+:root{--bg:#f6f1e7;--card:#fffdf8;--ink:#2a2118;--mute:#7a6b58;--acc:#8c2f1f;--line:#e2d7c3;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17130f;--card:#221c16;--ink:#f0e6d4;--mute:#a8987f;--acc:#e0705a;--line:#3a3025;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17130f;--card:#221c16;--ink:#f0e6d4;--mute:#a8987f;--acc:#e0705a;--line:#3a3025;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 Georgia,'Times New Roman',serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:4px 0 12px;color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+select{flex:1;min-width:100px}
+button.p{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:bold;flex:1}
+button{cursor:pointer}
+h2{font-size:1.4rem;margin:0}
+.sub{color:var(--mute);margin:2px 0 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.stat{border:1px solid var(--line);border-radius:10px;text-align:center;padding:8px 4px}
+.stat b{display:block;font-size:1.5rem}
+.stat small{color:var(--mute);letter-spacing:.05em}
+.kv{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px}
+.kv span{color:var(--mute)}
+h3{margin:0 0 8px;font-size:1rem;color:var(--acc)}
+.list{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;font-size:.95rem}
+.list div{display:flex;justify-content:space-between;border-bottom:1px dotted var(--line);padding:2px 0}
+.on{font-weight:bold}
+.on::before{content:"● ";color:var(--acc)}
+.note{color:var(--mute);font-size:.85rem}
+#msg{min-height:1.2em;margin-top:8px;font-size:.9rem;color:var(--acc)}
+textarea{position:absolute;left:-9999px}
+#pop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+#pop[hidden]{display:none}
+.pc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;width:100%;max-width:360px;text-align:center}
+.big{font-size:3rem;font-weight:bold;color:var(--acc);line-height:1.1}
+.crit{color:var(--acc);font-weight:bold}
+[data-r]{cursor:pointer}
+a[data-r]{color:var(--acc);text-decoration:underline dotted}
+ul{margin:0;padding-left:20px}
+</style>
+</head>
+<body>
+<main>
+<h1>⚔️ 5e Character Roller</h1>
+<div class="card">
+<div class="row">
+<select id="selR"></select><select id="selC"></select>
+</div>
+<div class="row" style="margin-top:8px">
+<select id="selL"></select>
+<button class="p" id="roll">🎲 Roll Character</button>
+</div>
+</div>
+<p class="note">Tap any modifier, attack bonus, damage or spell to roll it.</p>
+<div id="sheet"></div>
+<div class="card" id="exp" style="display:none">
+<h3>Export to Google Sheets</h3>
+<div class="row">
+<button class="p" id="copy">Copy for Sheets</button>
+<a href="https://sheets.new" target="_blank" rel="noopener"><button type="button">Open new Sheet ↗</button></a>
+</div>
+<div id="msg"></div>
+<p class="note">Copy, open a blank Sheet, click cell A1 and paste. Each ability, save and skill lands in its own cell.</p>
+</div>
+<div id="pop" hidden><div class="pc"><h3 id="pt"></h3><div id="pb2"></div><div class="row" style="margin-top:12px"><button class="p" id="again">Roll again</button><button id="close">Close</button></div></div></div>
+<textarea id="ta"></textarea>
+</main>
+<script>
+const AB=['STR','DEX','CON','INT','WIS','CHA'];
+const SK={Acrobatics:1,'Animal Handling':4,Arcana:3,Athletics:0,Deception:5,History:3,Insight:4,Intimidation:5,Investigation:3,Medicine:4,Nature:3,Perception:4,Performance:5,Persuasion:5,Religion:3,'Sleight of Hand':1,Stealth:1,Survival:4};
+const ALLSK=Object.keys(SK);
+const R={Human:{all:1,sp:30},Dwarf:{b:{CON:2},sp:25},Elf:{b:{DEX:2},sp:30},Halfling:{b:{DEX:2},sp:25},Dragonborn:{b:{STR:2,CHA:1},sp:30},Gnome:{b:{INT:2},sp:25},'Half-Elf':{b:{CHA:2},two:1,sp:30},'Half-Orc':{b:{STR:2,CON:1},sp:30},Tiefling:{b:{CHA:2,INT:1},sp:30}};
+const C={
+Barbarian:{hd:12,p:'STR CON DEX WIS CHA INT',s:'STR CON',n:2,k:'Animal Handling,Athletics,Intimidation,Nature,Perception,Survival',ac:m=>10+m.DEX+m.CON},
+Bard:{hd:8,p:'CHA DEX CON WIS INT STR',s:'DEX CHA',n:3,k:'',ac:m=>11+m.DEX},
+Cleric:{hd:8,p:'WIS CON STR DEX CHA INT',s:'WIS CHA',n:2,k:'History,Insight,Medicine,Persuasion,Religion',ac:m=>16},
+Druid:{hd:8,p:'WIS CON DEX INT CHA STR',s:'INT WIS',n:2,k:'Arcana,Animal Handling,Insight,Medicine,Nature,Perception,Religion,Survival',ac:m=>12+m.DEX},
+Fighter:{hd:10,p:'STR CON DEX WIS INT CHA',s:'STR CON',n:2,k:'Acrobatics,Animal Handling,Athletics,History,Insight,Intimidation,Perception,Survival',ac:m=>16},
+Monk:{hd:8,p:'DEX WIS CON STR INT CHA',s:'STR DEX',n:2,k:'Acrobatics,Athletics,History,Insight,Religion,Stealth',ac:m=>10+m.DEX+m.WIS},
+Paladin:{hd:10,p:'STR CHA CON WIS DEX INT',s:'WIS CHA',n:2,k:'Athletics,Insight,Intimidation,Medicine,Persuasion,Religion',ac:m=>18},
+Ranger:{hd:10,p:'DEX WIS CON STR INT CHA',s:'STR DEX',n:3,k:'Animal Handling,Athletics,Insight,Investigation,Nature,Perception,Stealth,Survival',ac:m=>11+m.DEX},
+Rogue:{hd:8,p:'DEX INT CHA CON WIS STR',s:'DEX INT',n:4,k:'Acrobatics,Athletics,Deception,Insight,Intimidation,Investigation,Perception,Performance,Persuasion,Sleight of Hand,Stealth',ac:m=>11+m.DEX},
+Sorcerer:{hd:6,p:'CHA CON DEX WIS INT STR',s:'CON CHA',n:2,k:'Arcana,Deception,Insight,Intimidation,Persuasion,Religion',ac:m=>10+m.DEX},
+Warlock:{hd:8,p:'CHA CON DEX WIS INT STR',s:'WIS CHA',n:2,k:'Arcana,Deception,History,Intimidation,Investigation,Nature,Religion',ac:m=>11+m.DEX},
+Wizard:{hd:6,p:'INT CON DEX WIS CHA STR',s:'INT WIS',n:2,k:'Arcana,History,Insight,Investigation,Medicine,Religion',ac:m=>10+m.DEX}};
+const BG={Acolyte:['Insight','Religion'],Charlatan:['Deception','Sleight of Hand'],Criminal:['Deception','Stealth'],Entertainer:['Acrobatics','Performance'],'Folk Hero':['Animal Handling','Survival'],Hermit:['Medicine','Religion'],Noble:['History','Persuasion'],Outlander:['Athletics','Survival'],Sage:['Arcana','History'],Sailor:['Athletics','Perception'],Soldier:['Athletics','Intimidation'],Urchin:['Sleight of Hand','Stealth']};
+const AL=['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','True Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
+const FN=['Aria','Borin','Cael','Dara','Elowen','Fenn','Garrick','Hesta','Ilya','Joren','Kira','Lorcan','Mira','Nyx','Orin','Perrin','Quill','Rhea','Soren','Tamsin','Ulric','Vex','Wren','Yara','Zane'];
+const LN=['Ashford','Brightwater','Coldiron','Duskwalker','Emberfall','Frostmere','Greymantle','Hollowell','Ironbark','Stormcrest','Thornwick','Underhill','Valemoor','Wildheart'];
+const S=s=>s.split(',');
+const SUB={
+Barbarian:S('Path of the Berserker,Path of the Totem Warrior,Path of the Ancestral Guardian,Path of the Storm Herald,Path of the Zealot'),
+Bard:S('College of Lore,College of Valor,College of Glamour,College of Swords,College of Whispers'),
+Cleric:S('Life Domain,Light Domain,Knowledge Domain,Nature Domain,Tempest Domain,Trickery Domain,War Domain,Forge Domain,Grave Domain'),
+Druid:S('Circle of the Land,Circle of the Moon,Circle of Dreams,Circle of the Shepherd,Circle of Spores,Circle of Wildfire'),
+Fighter:S('Champion,Battle Master,Eldritch Knight,Arcane Archer,Cavalier,Samurai,Echo Knight,Psi Warrior'),
+Monk:S('Way of the Open Hand,Way of Shadow,Way of the Four Elements,Way of the Drunken Master,Way of the Kensei,Way of the Sun Soul,Way of Mercy'),
+Paladin:S('Oath of Devotion,Oath of the Ancients,Oath of Vengeance,Oath of Conquest,Oath of Redemption,Oath of Glory'),
+Ranger:S('Hunter,Beast Master,Gloom Stalker,Horizon Walker,Monster Slayer,Fey Wanderer'),
+Rogue:S('Thief,Assassin,Arcane Trickster,Inquisitive,Mastermind,Scout,Swashbuckler,Phantom'),
+Sorcerer:S('Draconic Bloodline,Wild Magic,Divine Soul,Shadow Magic,Storm Sorcery,Aberrant Mind,Clockwork Soul'),
+Warlock:S('The Archfey,The Fiend,The Great Old One,The Celestial,The Hexblade,The Undead,The Fathomless'),
+Wizard:S('School of Abjuration,School of Conjuration,School of Divination,School of Enchantment,School of Evocation,School of Illusion,School of Necromancy,School of Transmutation,War Magic,Bladesinging')};
+const SL={Cleric:1,Sorcerer:1,Warlock:1,Druid:2,Wizard:2};
+const CF={
+Barbarian:'1:Rage,1:Unarmored Defense,2:Reckless Attack,2:Danger Sense,3:Primal Path,5:Extra Attack,5:Fast Movement,7:Feral Instinct,9:Brutal Critical,11:Relentless Rage,15:Persistent Rage,18:Indomitable Might,20:Primal Champion',
+Bard:'1:Spellcasting,1:Bardic Inspiration,2:Jack of All Trades,2:Song of Rest,3:Bard College,3:Expertise,5:Font of Inspiration,6:Countercharm,10:Magical Secrets,20:Superior Inspiration',
+Cleric:'1:Spellcasting,1:Divine Domain,2:Channel Divinity,5:Destroy Undead,10:Divine Intervention',
+Druid:'1:Druidic,1:Spellcasting,2:Wild Shape,2:Druid Circle,18:Timeless Body,18:Beast Spells,20:Archdruid',
+Fighter:'1:Fighting Style,1:Second Wind,2:Action Surge,3:Martial Archetype,5:Extra Attack,9:Indomitable,11:Extra Attack (2),20:Extra Attack (3)',
+Monk:'1:Unarmored Defense,1:Martial Arts,2:Ki,2:Unarmored Movement,3:Monastic Tradition,3:Deflect Missiles,4:Slow Fall,5:Extra Attack,5:Stunning Strike,6:Ki-Empowered Strikes,7:Evasion,7:Stillness of Mind,10:Purity of Body,14:Diamond Soul,15:Timeless Body,18:Empty Body,20:Perfect Self',
+Paladin:'1:Divine Sense,1:Lay on Hands,2:Fighting Style,2:Spellcasting,2:Divine Smite,3:Divine Health,3:Sacred Oath,5:Extra Attack,6:Aura of Protection,10:Aura of Courage,11:Improved Divine Smite,14:Cleansing Touch',
+Ranger:'1:Favored Enemy,1:Natural Explorer,2:Fighting Style,2:Spellcasting,3:Ranger Archetype,3:Primeval Awareness,5:Extra Attack,8:Land’s Stride,10:Hide in Plain Sight,14:Vanish,18:Feral Senses,20:Foe Slayer',
+Rogue:'1:Expertise,1:Sneak Attack,1:Thieves’ Cant,2:Cunning Action,3:Roguish Archetype,5:Uncanny Dodge,7:Evasion,11:Reliable Talent,14:Blindsense,15:Slippery Mind,18:Elusive,20:Stroke of Luck',
+Sorcerer:'1:Spellcasting,1:Sorcerous Origin,2:Font of Magic,3:Metamagic,20:Sorcerous Restoration',
+Warlock:'1:Otherworldly Patron,1:Pact Magic,2:Eldritch Invocations,3:Pact Boon,11:Mystic Arcanum (6th level),20:Eldritch Master',
+Wizard:'1:Spellcasting,1:Arcane Recovery,2:Arcane Tradition,18:Spell Mastery,20:Signature Spells'};
+const SF={};
+'Path of the Berserker=Frenzy|Path of the Totem Warrior=Spirit Seeker, Totem Spirit|Path of the Ancestral Guardian=Ancestral Protectors|Path of the Storm Herald=Storm Aura|Path of the Zealot=Divine Fury, Warrior of the Gods|College of Lore=Bonus Proficiencies, Cutting Words|College of Valor=Combat Inspiration, Medium Armor and Shields|College of Glamour=Mantle of Inspiration, Enthralling Performance|College of Swords=Blade Flourish, Fighting Style|College of Whispers=Psychic Blades, Words of Terror|Life Domain=Disciple of Life, Heavy Armor|Light Domain=Warding Flare, Radiance of the Dawn|Knowledge Domain=Blessings of Knowledge|Nature Domain=Acolyte of Nature, Heavy Armor|Tempest Domain=Wrath of the Storm, Heavy Armor|Trickery Domain=Blessing of the Trickster, Invoke Duplicity|War Domain=War Priest, Guided Strike|Forge Domain=Blessing of the Forge|Grave Domain=Circle of Mortality, Eyes of the Grave|Circle of the Land=Bonus Cantrip, Natural Recovery|Circle of the Moon=Combat Wild Shape|Circle of Dreams=Balm of the Summer Court|Circle of the Shepherd=Spirit Totem|Circle of Spores=Halo of Spores|Circle of Wildfire=Summon Wildfire Spirit|Champion=Improved Critical|Battle Master=Combat Superiority, Maneuvers|Eldritch Knight=Weapon Bond, Spellcasting|Arcane Archer=Arcane Shot|Cavalier=Born to the Saddle|Samurai=Fighting Spirit|Echo Knight=Manifest Echo|Psi Warrior=Psionic Power|Way of the Open Hand=Open Hand Technique|Way of Shadow=Shadow Arts|Way of the Four Elements=Disciple of the Elements|Way of the Drunken Master=Drunken Technique|Way of the Kensei=Path of the Kensei|Way of the Sun Soul=Radiant Sun Bolt|Way of Mercy=Hands of Healing and Harm|Oath of Devotion=Sacred Weapon, Turn the Unholy|Oath of the Ancients=Nature’s Wrath, Turn the Faithless|Oath of Vengeance=Abjure Enemy, Vow of Enmity|Oath of Conquest=Conquering Presence, Guided Strike|Oath of Redemption=Emissary of Peace, Rebuke the Violent|Oath of Glory=Peerless Athlete, Inspiring Smite|Hunter=Hunter’s Prey|Beast Master=Ranger’s Companion|Gloom Stalker=Dread Ambusher, Umbral Sight|Horizon Walker=Detect Portal, Planar Warrior|Monster Slayer=Hunter’s Sense, Slayer’s Prey|Fey Wanderer=Dreadful Strikes, Otherworldly Glamour|Thief=Fast Hands, Second-Story Work|Assassin=Assassinate, Bonus Proficiencies|Arcane Trickster=Mage Hand Legerdemain, Spellcasting|Inquisitive=Ear for Deceit, Eye for Detail|Mastermind=Master of Intrigue, Master of Tactics|Scout=Skirmisher, Survivalist|Swashbuckler=Fancy Footwork, Rakish Audacity|Phantom=Whispers of the Dead, Wails from the Grave|Draconic Bloodline=Dragon Ancestor, Draconic Resilience|Wild Magic=Wild Magic Surge, Tides of Chaos|Divine Soul=Divine Magic, Favored by the Gods|Shadow Magic=Eyes of the Dark, Strength of the Grave|Storm Sorcery=Wind Speaker, Tempestuous Magic|Aberrant Mind=Psionic Spells, Telepathic Speech|Clockwork Soul=Clockwork Magic, Restore Balance|The Archfey=Fey Presence|The Fiend=Dark One’s Blessing|The Great Old One=Awakened Mind|The Celestial=Healing Light|The Hexblade=Hexblade’s Curse, Hex Warrior|The Undead=Form of Dread|The Fathomless=Tentacle of the Deeps, Gift of the Sea|School of Abjuration=Abjuration Savant, Arcane Ward|School of Conjuration=Conjuration Savant, Minor Conjuration|School of Divination=Divination Savant, Portent|School of Enchantment=Enchantment Savant, Hypnotic Gaze|School of Evocation=Evocation Savant, Sculpt Spells|School of Illusion=Illusion Savant, Improved Minor Illusion|School of Necromancy=Necromancy Savant, Grim Harvest|School of Transmutation=Transmutation Savant, Minor Alchemy|War Magic=Arcane Deflection, Tactical Wit|Bladesinging=Training in War and Song, Bladesong'.split('|').forEach(t=>{const p=t.split('=');SF[p[0]]=p[1]});
+const RF={
+Human:'+1 to all ability scores; one extra language; speed 30 ft.',
+Dwarf:'Darkvision 60 ft; Dwarven Resilience (advantage and resistance vs poison); Dwarven Combat Training; Stonecunning; speed 25 ft, not slowed by heavy armor.',
+Elf:'Darkvision 60 ft; Keen Senses (Perception proficiency); Fey Ancestry (advantage vs charm, immune to magical sleep); Trance (4 hours rest).',
+Halfling:'Lucky (reroll natural 1s); Brave (advantage vs frightened); Halfling Nimbleness (move through larger creatures); speed 25 ft.',
+Dragonborn:'Draconic Ancestry; Breath Weapon (2d6 at level 1, scaling); Damage Resistance to your ancestry\u2019s element.',
+Gnome:'Darkvision 60 ft; Gnome Cunning (advantage on INT, WIS, CHA saves vs magic); speed 25 ft.',
+'Half-Elf':'Darkvision 60 ft; Fey Ancestry; Skill Versatility (two extra skill proficiencies); two extra +1 ability scores.',
+'Half-Orc':'Darkvision 60 ft; Menacing (Intimidation proficiency); Relentless Endurance (drop to 1 HP once per long rest); Savage Attacks (extra crit die).',
+Tiefling:'Darkvision 60 ft; Hellish Resistance (fire); Infernal Legacy (Thaumaturgy, Hellish Rebuke at level 3, Darkness at level 5).'};
+function featHtml(x){
+  const asi=[4,8,12,16,19].filter(l=>l<=x.lvl).length+(x.cls==='Fighter'?[6,14].filter(l=>l<=x.lvl).length:0)+(x.cls==='Rogue'?(x.lvl>=10?1:0):0);
+  let li=CF[x.cls].split(',').map(t=>t.split(':')).filter(t=>+t[0]<=x.lvl).map(t=>'<li><b>L'+t[0]+'</b> '+t[1]+'</li>').join('');
+  if(asi)li+='<li><b>ASI</b> '+asi+' Ability Score Improvement'+(asi>1?'s':'')+' (already applied above)</li>';
+  let h='<div class="card"><h3>'+x.cls+' Features</h3><ul>'+li+'</ul></div>';
+  if(x.sub)h+='<div class="card"><h3>'+x.sub+'</h3><p>'+(SF[x.sub]||'')+'</p><p class="note">Later subclass features are in the source books.</p></div>';
+  return h+'<div class="card"><h3>'+x.race+' Traits</h3><p>'+RF[x.race]+'</p><p class="note">Subraces are not modeled.</p></div>';
+}
+let LAST=null;
+function rollDmg(s){
+  let mult=1,m;
+  if(m=s.match(/^(\d+)\u00d7/)){mult=+m[1];s=s.replace(/^\d+\u00d7/,'')}
+  if(m=s.match(/\u00d7(\d+) beams/)){mult=+m[1];s=s.replace(/ \u00d7\d+ beams/,'')}
+  let tot=0;const parts=[];
+  for(let i=0;i<mult;i++){
+    const re=/(\d+)d(\d+)|[+-]\d+(?!\d*d)/g;let g,sub=[];
+    while(g=re.exec(s)){
+      if(g[1]){const rs=Array.from({length:+g[1]},()=>d(+g[2]));tot+=rs.reduce((a,b)=>a+b,0);sub.push(g[1]+'d'+g[2]+' ['+rs.join(', ')+']')}
+      else{tot+=+g[0];sub.push(g[0])}
+    }
+    parts.push((mult>1?'Roll '+(i+1)+': ':'')+sub.join(' '));
+  }
+  return{tot:Math.max(0,tot),parts};
+}
+function doRoll(el){
+  LAST=el;const k=el.dataset.r,l=el.dataset.l,v=el.dataset.v;let h;
+  if(k==='dmg'){const r=rollDmg(v);h='<div class="big">'+r.tot+'</div><p>'+r.parts.join('<br>')+'</p><p class="note">'+v+'</p>'}
+  else{const m=+v,n=d(20),t=n+m;h='<div class="big">'+t+'</div><p>d20: <b>'+n+'</b> '+sg(m)+' = <b>'+t+'</b></p>'+(n===20?'<p class="crit">Natural 20!</p>':n===1?'<p class="crit">Natural 1</p>':'')}
+  $('pt').textContent=l;$('pb2').innerHTML=h;$('pop').hidden=false;
+}
+function spHtml(s){
+  const m=s.match(/^(.+?) \((.+) \u00b7 (.+)\)$/);if(!m)return s;
+  const a=m[3].match(/^([+-]\d+) to hit$/);
+  return m[1]+' (<a data-r="dmg" data-l="'+m[1]+' damage" data-v="'+m[2]+'">'+m[2]+'</a> \u00b7 '+(a?'<a data-r="atk" data-l="'+m[1]+' attack" data-v="'+a[1]+'">'+m[3]+'</a>':m[3])+')';
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-r]');
+  if(t)doRoll(t);
+  else if(e.target.id==='pop'||e.target.id==='close')$('pop').hidden=true;
+  else if(e.target.id==='again'&&LAST)doRoll(LAST);
+});
+const WP={
+Barbarian:[['Greataxe','1d12','slashing','S'],['Handaxe (thrown)','1d6','slashing','S'],['Javelin (thrown)','1d6','piercing','S']],
+Bard:[['Rapier','1d8','piercing','F'],['Dagger','1d4','piercing','F']],
+Cleric:[['Mace','1d6','bludgeoning','S'],['Light crossbow','1d8','piercing','D']],
+Druid:[['Scimitar','1d6','slashing','F']],
+Fighter:[['Longsword','1d8','slashing','S'],['Light crossbow','1d8','piercing','D']],
+Monk:[['Unarmed Strike','1d4','bludgeoning','M'],['Shortsword','1d6','piercing','F'],['Dart','1d4','piercing','F']],
+Paladin:[['Longsword','1d8','slashing','S'],['Javelin (thrown)','1d6','piercing','S']],
+Ranger:[['Shortsword','1d6','piercing','F'],['Longbow','1d8','piercing','D']],
+Rogue:[['Rapier','1d8','piercing','F'],['Shortbow','1d6','piercing','D'],['Dagger','1d4','piercing','F']],
+Sorcerer:[['Light crossbow','1d8','piercing','D'],['Dagger','1d4','piercing','F']],
+Warlock:[['Light crossbow','1d8','piercing','D'],['Dagger','1d4','piercing','F']],
+Wizard:[['Quarterstaff','1d6','bludgeoning','S'],['Dagger','1d4','piercing','F']]};
+const SD={
+'Fire Bolt':['1d10 fire','a'],'Ray of Frost':['1d8 cold','a'],'Shocking Grasp':['1d8 lightning','a'],'Eldritch Blast':['1d10 force','a'],'Chill Touch':['1d8 necrotic','a'],'Sacred Flame':['1d8 radiant','DEX'],'Produce Flame':['1d8 fire','a'],'Thorn Whip':['1d6 piercing','a'],'Vicious Mockery':['1d4 psychic','WIS'],
+'Magic Missile':['3×(1d4+1) force','auto'],'Burning Hands':['3d6 fire','DEX'],'Guiding Bolt':['4d6 radiant','a'],'Witch Bolt':['1d12 lightning','a'],'Thunderwave':['2d8 thunder','CON'],'Dissonant Whispers':['3d6 psychic','WIS'],'Hellish Rebuke':['2d10 fire','DEX'],'Hex':['+1d6 necrotic','auto'],
+'Scorching Ray':['3×2d6 fire','a'],'Shatter':['3d8 thunder','CON'],'Heat Metal':['2d8 fire','auto'],'Flaming Sphere':['2d6 fire','DEX'],'Moonbeam':['2d10 radiant','CON'],
+'Fireball':['8d6 fire','DEX'],'Lightning Bolt':['8d6 lightning','DEX'],'Spirit Guardians':['3d8 radiant','WIS'],'Call Lightning':['3d10 lightning','DEX'],'Vampiric Touch':['3d6 necrotic','a'],'Hunger of Hadar':['2d6 cold + 2d6 acid','DEX'],
+'Ice Storm':['2d8 bludgeoning + 4d6 cold','DEX'],'Blight':['8d8 necrotic','CON'],'Wall of Fire':['5d8 fire','DEX'],
+'Flame Strike':['4d6 fire + 4d6 radiant','DEX'],'Cone of Cold':['8d8 cold','CON'],'Insect Plague':['4d10 piercing','CON'],
+'Disintegrate':['10d6+40 force','DEX'],'Chain Lightning':['10d8 lightning','DEX'],'Sunbeam':['6d8 radiant','CON'],'Harm':['14d6 necrotic','CON'],'Wall of Thorns':['7d8 piercing','DEX'],
+'Finger of Death':['7d8+30 necrotic','CON'],'Fire Storm':['7d10 fire','DEX'],'Sunburst':['12d6 radiant','CON'],'Meteor Swarm':['20d6 fire + 20d6 bludgeoning','DEX'],
+'Branding Smite':['+2d6 radiant','weapon'],'Staggering Smite':['+4d6 psychic','weapon'],'Banishing Smite':['+5d10 force','weapon'],'Hunter’s Mark':['+1d6 weapon','weapon'],'Lightning Arrow':['4d8 lightning','weapon'],'Destructive Wave':['5d6 thunder + 5d6 radiant','CON']};
+function fmt(s,x,c){
+  const e=SD[s];if(!e)return s;
+  let dm=e[0];
+  if(c){const n=1+(x.lvl>=5)+(x.lvl>=11)+(x.lvl>=17);dm=s==='Eldritch Blast'?dm+' ×'+n+' beams':dm.replace(/^1d/,n+'d')}
+  const how=e[1]==='a'?sg(x.sa)+' to hit':e[1]==='auto'?'auto-hit':e[1]==='weapon'?'on weapon hit':'DC '+x.dc+' '+e[1]+' save';
+  return s+' ('+dm+' · '+how+')';
+}
+function combatHtml(x){
+  const b=[['HP',x.hp],['AC',x.ac],['Initiative',sg(x.init)],['Speed',x.sp+' ft'],['Proficiency',sg(x.pb)],['Passive Perc.',x.pp],['Hit Dice',x.hd],['Spell Atk',x.sa==null?'—':sg(x.sa)],['Spell DC',x.dc==null?'—':x.dc]];
+  return b.map(a=>{const r=a[0]==='Initiative'?['chk','Initiative',x.init]:a[0]==='Spell Atk'&&x.sa!=null?['atk','Spell attack',x.sa]:null;return '<div class="stat"'+(r?' data-r="'+r[0]+'" data-l="'+r[1]+'" data-v="'+r[2]+'"':'')+'><small>'+a[0].toUpperCase()+'</small><b>'+a[1]+'</b></div>'}).join('');
+}
+function atkHtml(x){
+  let h='<div class="card"><h3>Attacks</h3><div class="list" style="grid-template-columns:1fr">'+x.atk.map(a=>'<div><span>'+a.n+'</span><span><a data-r="atk" data-l="'+a.n+' attack" data-v="'+a.hit+'">'+sg(a.hit)+'</a> · <a data-r="dmg" data-l="'+a.n+' damage" data-v="'+a.dmg+'">'+a.dmg+'</a></span></div>').join('')+'</div>';
+  if(x.sa!=null)h+='<p>Spell attack <b><a data-r="atk" data-l="Spell attack" data-v="'+x.sa+'">'+sg(x.sa)+'</a></b> · Save DC <b>'+x.dc+'</b> <span class="note">('+CA[x.cls]+')</span></p>';
+  return h+'<p class="note">Weapon bonuses assume proficiency; damage shown for a normal hit.</p></div>';
+}
+const PH={
+Human:{a:[18,80],h:[60,76],w:[110,250],e:S('Brown,Blue,Green,Hazel,Gray'),hr:S('Black,Brown,Auburn,Blond,Red,Gray'),s:S('Pale,Fair,Tan,Olive,Brown,Dark brown'),g:S('Pelor,Tyr,Lathander,Kelemvor,Mystra,Selune')},
+Dwarf:{a:[50,350],h:[48,56],w:[130,190],e:S('Brown,Gray,Dark amber'),hr:S('Black,Brown,Gray,Red'),s:S('Tan,Brown,Deep brown,Ruddy'),g:S('Moradin,Berronar Truesilver,Dumathoin')},
+Elf:{a:[100,700],h:[62,74],w:[90,150],e:S('Violet,Green,Golden,Silver,Blue'),hr:S('Silver,Black,White,Golden,Copper'),s:S('Pale,Bronze,Copper,Ashen'),g:S('Corellon,Sehanine Moonbow,Rillifane Rallathil')},
+Halfling:{a:[20,150],h:[31,39],w:[35,45],e:S('Brown,Hazel,Green'),hr:S('Brown,Sandy,Black,Auburn'),s:S('Ruddy,Tan,Fair'),g:S('Yondalla,Sheela Peryroyl,Brandobaris')},
+Dragonborn:{a:[15,80],h:[72,84],w:[220,300],e:S('Gold,Red,Blue,Green'),hr:S('None (scaled)'),s:S('Red scales,Gold scales,Bronze scales,Silver scales,Black scales,Blue scales,Green scales,White scales'),g:S('Bahamut,Tiamat,Kord')},
+Gnome:{a:[40,500],h:[36,44],w:[38,46],e:S('Bright blue,Green,Amber'),hr:S('White,Gray,Brown,Wild red'),s:S('Tan,Brown,Rosy,Fair'),g:S('Garl Glittergold,Baervan Wildwanderer,Nebelun')},
+'Half-Elf':{a:[20,180],h:[60,72],w:[100,190],e:S('Green,Brown,Gray,Violet,Hazel'),hr:S('Black,Brown,Silver,Auburn,Blond'),s:S('Fair,Tan,Olive,Bronze'),g:S('Sehanine Moonbow,Lathander,Mystra,Tymora')},
+'Half-Orc':{a:[14,75],h:[66,84],w:[180,280],e:S('Red,Brown,Black,Yellow'),hr:S('Black,Dark brown,Gray'),s:S('Gray,Green-tinged,Olive,Dark'),g:S('Gruumsh,Luthic,Tempus,Ilneval')},
+Tiefling:{a:[18,100],h:[60,76],w:[110,220],e:S('Solid black,Red,Gold,Silver'),hr:S('Black,Dark blue,Burgundy,Purple'),s:S('Red,Ashen blue,Purple,Pale'),g:S('Asmodeus,Tymora,Mystra,Waukeen')}};
+const KIT={
+Barbarian:{i:['Greataxe','2 handaxes','4 javelins','Explorer’s pack'],g:[2,10]},
+Bard:{i:['Rapier','Dagger','Lute','Leather armor','Diplomat’s pack'],g:[5,10]},
+Cleric:{i:['Mace','Scale mail','Shield','Light crossbow & 20 bolts','Holy symbol','Priest’s pack'],g:[5,10]},
+Druid:{i:['Wooden shield','Scimitar','Leather armor','Druidic focus','Explorer’s pack'],g:[2,10]},
+Fighter:{i:['Chain mail','Longsword','Shield','Light crossbow & 20 bolts','Dungeoneer’s pack'],g:[5,10]},
+Monk:{i:['Shortsword','10 darts','Dungeoneer’s pack'],g:[5,1]},
+Paladin:{i:['Chain mail','Longsword','Shield','5 javelins','Holy symbol','Priest’s pack'],g:[5,10]},
+Ranger:{i:['Scale mail','2 shortswords','Longbow & 20 arrows','Dungeoneer’s pack'],g:[5,10]},
+Rogue:{i:['Rapier','Shortbow & 20 arrows','Leather armor','2 daggers','Thieves’ tools','Burglar’s pack'],g:[4,10]},
+Sorcerer:{i:['Light crossbow & 20 bolts','2 daggers','Arcane focus','Dungeoneer’s pack'],g:[3,10]},
+Warlock:{i:['Light crossbow & 20 bolts','Leather armor','2 daggers','Arcane focus','Scholar’s pack'],g:[4,10]},
+Wizard:{i:['Quarterstaff','Dagger','Spellbook','Component pouch','Scholar’s pack'],g:[4,10]}};
+const CT={
+Barbarian:['I charge in first and think later.','Freedom. Chains are meant to be broken.','I fly into a rage at the slightest insult.'],
+Bard:['I turn every moment into a story.','Creativity. The world needs new songs.','I can’t resist a chance to show off.'],
+Cleric:['I quote scripture in every situation.','Faith. My god’s will guides my hand.','I judge those who doubt my faith.'],
+Druid:['I’m more at ease with animals than people.','Balance. Nature must stay in harmony.','I distrust cities and the people in them.'],
+Fighter:['I size up every room for threats.','Duty. I protect those who can’t protect themselves.','I never back down from a challenge.'],
+Monk:['I speak softly and weigh every word.','Discipline. Mastery comes through restraint.','I look down on those who lack self-control.'],
+Paladin:['I hold myself to the highest standard.','Honor. I never break an oath.','I expect others to meet my impossible standards.'],
+Ranger:['I read tracks the way others read books.','Wilds. Guard the frontier from what lurks beyond.','I struggle to trust strangers.'],
+Rogue:['I always have an exit planned.','Freedom. Nobody should rule over me.','I can’t pass up anything shiny.'],
+Sorcerer:['My power surprises even me.','Power. I must master the magic in my blood.','I fear what my magic might do.'],
+Warlock:['I bargain even at dinner.','Knowledge. Power is worth any price.','I keep dangerous secrets about my patron.'],
+Wizard:['I correct people’s facts constantly.','Knowledge. Truth is the only true power.','My curiosity makes me ignore danger.']};
+const ST={
+Human:['I’m eager to prove myself in a short life.','My community is what I fight for.'],
+Dwarf:['I hold grudges for centuries.','My clan’s honor is my own.'],
+Elf:['I find hasty folk exhausting.','An old friendship across the ages pulls me onward.'],
+Halfling:['I’m always snacking.','Home and hearth are worth any risk.'],
+Dragonborn:['I take great pride in my lineage.','I owe a debt to my clan.'],
+Gnome:['I take apart anything I can’t understand.','My inventions mean everything to me.'],
+'Half-Elf':['I feel I belong fully nowhere.','I seek a place that accepts me.'],
+'Half-Orc':['People expect trouble from me, so I give them gentleness.','I’ll prove I’m more than my blood.'],
+Tiefling:['I expect suspicion and answer with charm.','I’m searching for who I really am.']};
+const BD={
+Acolyte:{d:'You spent your early life in a temple, serving priests and learning sacred rites.',t:['I see omens in everything.','I quote sacred texts at every turn.','I befriend anyone who shares my faith.'],i:['Tradition. Ancient rites must endure.','Charity. I help the needy.'],b:['I would die to recover a relic of my faith.','I owe my life to the priest who took me in.'],f:['I’m inflexible in my thinking.','I trust the temple hierarchy too much.'],it:'Holy symbol, prayer book, incense, vestments, 15 gp'},
+Charlatan:{d:'You’ve lived by wits and false smiles, running cons across many towns.',t:['I fall in and out of love quickly.','I lie so smoothly even I forget the truth.','I’m always chasing the next big score.'],i:['Independence. I am a free spirit.','Fairness. I only con those who deserve it.'],b:['I owe a debt to a mark I swindled.','A former partner betrayed me, and I seek them.'],f:['I can’t resist a pretty face.','I’m convinced I’ll never be caught.'],it:'Fine clothes, disguise kit, con tools, 15 gp'},
+Criminal:{d:'You have a history of breaking the law and contacts in the underworld.',t:['I always have a plan for when things go wrong.','I hate to admit when I’m scared.','I trust no one fully.'],i:['Freedom. Rules are chains.','Redemption. There’s good in everyone.'],b:['I’m trying to pay off an old debt.','Someone I love is still in the gang.'],f:['When I see something valuable I can’t think of anything else.','I run at the first sign of danger.'],it:'Crowbar, dark hooded clothes, 15 gp'},
+Entertainer:{d:'You thrive in front of an audience and know how to read a crowd.',t:['I know a story for every occasion.','I joke when things turn grim.','I’m always practicing my art.'],i:['Beauty. Art makes the world better.','Honesty. Art reveals truth.'],b:['My instrument is my most treasured possession.','I want to be famous across the land.'],f:['I’ll do anything for fame.','I can’t stand being ignored.'],it:'Musical instrument, admirer’s favor, costume, 15 gp'},
+'Folk Hero':{d:'You come from humble origins but are destined for more, beloved by your village.',t:['I judge people by their actions, not words.','I confront bullies head-on.','I’m a hard worker and a good neighbor.'],i:['Respect. All people deserve dignity.','Sincerity. There’s no good in lies.'],b:['I protect those who can’t protect themselves.','My tools are my livelihood and legacy.'],f:['The tyrant who ruined my village still haunts me.','I trust authority too easily.'],it:'Artisan’s tools, shovel, iron pot, 10 gp'},
+Hermit:{d:'You lived in seclusion for years, seeking a discovery or a hidden truth.',t:['I’ve been alone so long I’m awkward with people.','I’m full of strange quotes.','I get lost in thought and ignore conversation.'],i:['Greater Good. My gifts are for everyone.','Self-Knowledge. Know yourself to know the world.'],b:['I entered seclusion to hide from those who’d hunt me.','My discovery must reach the world.'],f:['I’m dogmatic about my beliefs.','I’m paranoid about being followed.'],it:'Scroll case of notes, herbalism kit, winter blanket, 5 gp'},
+Noble:{d:'You were raised in wealth and privilege, accustomed to deference.',t:['My flattery makes everyone feel important.','I take offense easily over my name.','I’m used to getting my way.'],i:['Responsibility. Those with power must serve.','Family. Blood runs thicker than all else.'],b:['I’ll face any danger to protect my family.','My house’s honor is above all.'],f:['I secretly believe everyone is beneath me.','I hide a scandalous family secret.'],it:'Signet ring, fine clothes, scroll of pedigree, 25 gp'},
+Outlander:{d:'You grew up in the wilds, far from civilization’s comforts.',t:['I’m driven by wanderlust.','I feel far more at home in the wild than in town.','I watch the weather and the animals.'],i:['Nature. The natural world matters most.','Glory. I’ll make a name that echoes.'],b:['My family and tribe are everything.','I’ll avenge those who wronged my land.'],f:['I try strange foods too eagerly.','There’s no room for weakness in my world.'],it:'Staff, hunting trap, animal trophy, traveler’s clothes, 10 gp'},
+Sage:{d:'You spent years learning lore from books, scrolls, and learned masters.',t:['I use big words to seem educated.','I’ve read every book in the library, or so I claim.','I’m horribly absent-minded.'],i:['Knowledge. The path to power is understanding.','Logic. Emotions must not cloud reason.'],b:['I seek a lost tome of ancient lore.','I work to preserve a library.'],f:['I can’t keep a secret to save my life.','I overlook obvious solutions for complicated ones.'],it:'Ink, quill, small knife, letter from a dead colleague, 10 gp'},
+Sailor:{d:'You spent years at sea, weathering storms and strange ports.',t:['My friends know they can count on me.','I work hard so I can play harder.','I curse like a sailor.'],i:['Freedom. The sea is freedom.','Mastery. I’m a master of my craft.'],b:['My ship is my home.','I was cheated by a captain and want justice.'],f:['I follow orders even when they’re wrong.','I drink too much.'],it:'Belaying pin, 50 ft silk rope, lucky charm, 10 gp'},
+Soldier:{d:'You trained in war and lived by discipline and orders.',t:['I’m always polite and respectful.','I can stare down a hell hound without flinching.','I enjoy the camaraderie of battle.'],i:['Greater Good. Our lot is to give up our lives for others.','Responsibility. I do what I must.'],b:['I’d die for those who fought beside me.','Someone saved my life in battle.'],f:['I made a terrible mistake in battle.','My hatred of enemies is blind.'],it:'Insignia of rank, trophy, dice set, 10 gp'},
+Urchin:{d:'You grew up poor on city streets, relying on instinct and street smarts.',t:['I hide scraps of food and trinkets.','I ask lots of questions.','I bluntly say what others only hint at.'],i:['Community. We have to look after each other.','Change. The low are lifted up.'],b:['My town is my home and I’ll defend it.','I protect those poorer than me.'],f:['If I’m outnumbered, I run.','Violence is my first answer.'],it:'Small knife, city map, pet mouse, 10 gp'}};
+const ARC='Fire Bolt,Mage Hand,Prestidigitation,Ray of Frost,Shocking Grasp,Light|Magic Missile,Shield,Sleep,Burning Hands,Detect Magic|Misty Step,Scorching Ray,Invisibility,Web,Hold Person|Fireball,Counterspell,Fly,Lightning Bolt,Haste|Greater Invisibility,Polymorph,Banishment,Ice Storm|Cone of Cold,Wall of Force,Telekinesis,Hold Monster|Disintegrate,Chain Lightning,Globe of Invulnerability,Sunbeam|Teleport,Finger of Death,Prismatic Spray,Plane Shift|Dominate Monster,Sunburst,Maze,Power Word Stun|Meteor Swarm,Wish,Time Stop,Power Word Kill';
+const SPL={Wizard:ARC,Sorcerer:ARC,
+Bard:'Vicious Mockery,Minor Illusion,Mage Hand,Dancing Lights,Prestidigitation|Healing Word,Dissonant Whispers,Faerie Fire,Charm Person,Thunderwave|Hold Person,Invisibility,Shatter,Heat Metal,Suggestion|Hypnotic Pattern,Dispel Magic,Fear,Bestow Curse|Dimension Door,Polymorph,Greater Invisibility,Compulsion|Hold Monster,Mass Cure Wounds,Dominate Person,Animate Objects|Mass Suggestion,Eyebite,Programmed Illusion,Otto’s Irresistible Dance|Forcecage,Teleport,Mirage Arcane,Regenerate|Dominate Monster,Feeblemind,Mind Blank,Glibness|Power Word Heal,Foresight,True Polymorph,Power Word Kill',
+Cleric:'Sacred Flame,Guidance,Light,Spare the Dying,Thaumaturgy|Cure Wounds,Bless,Guiding Bolt,Shield of Faith,Healing Word|Spiritual Weapon,Lesser Restoration,Hold Person,Aid,Prayer of Healing|Spirit Guardians,Revivify,Dispel Magic,Mass Healing Word,Beacon of Hope|Banishment,Death Ward,Guardian of Faith,Freedom of Movement|Mass Cure Wounds,Raise Dead,Greater Restoration,Flame Strike|Heal,Harm,Blade Barrier,Word of Recall|Resurrection,Regenerate,Fire Storm,Divine Word|Holy Aura,Earthquake,Antimagic Field,Control Weather|Mass Heal,True Resurrection,Gate,Astral Projection',
+Druid:'Druidcraft,Produce Flame,Shillelagh,Guidance,Thorn Whip|Entangle,Goodberry,Healing Word,Thunderwave,Fog Cloud|Moonbeam,Pass without Trace,Barkskin,Flaming Sphere,Spike Growth|Call Lightning,Conjure Animals,Plant Growth,Dispel Magic|Polymorph,Wall of Fire,Ice Storm,Blight|Tree Stride,Insect Plague,Commune with Nature,Mass Cure Wounds|Sunbeam,Heal,Wall of Thorns,Transport via Plants|Fire Storm,Regenerate,Mirage Arcane,Plane Shift|Earthquake,Sunburst,Control Weather,Animal Shapes|Storm of Vengeance,Shapechange,Foresight,True Resurrection',
+Warlock:'Eldritch Blast,Chill Touch,Mage Hand,Minor Illusion,Prestidigitation|Hex,Armor of Agathys,Hellish Rebuke,Charm Person,Witch Bolt|Misty Step,Hold Person,Darkness,Invisibility,Shatter|Counterspell,Fear,Hunger of Hadar,Hypnotic Pattern,Vampiric Touch|Banishment,Dimension Door,Blight,Hallucinatory Terrain|Hold Monster,Dominate Person,Wall of Force,Contact Other Plane',
+Paladin:'|Bless,Cure Wounds,Divine Favor,Shield of Faith,Command|Find Steed,Lesser Restoration,Zone of Truth,Branding Smite|Revivify,Dispel Magic,Crusader’s Mantle,Daylight|Banishment,Death Ward,Staggering Smite,Find Greater Steed|Destructive Wave,Raise Dead,Banishing Smite,Circle of Power',
+Ranger:'|Hunter’s Mark,Cure Wounds,Goodberry,Fog Cloud,Ensnaring Strike|Pass without Trace,Spike Growth,Silence,Lesser Restoration|Conjure Animals,Lightning Arrow,Plant Growth,Water Breathing|Freedom of Movement,Stoneskin,Locate Creature,Grasping Vine|Swift Quiver,Tree Stride,Commune with Nature,Conjure Volley'};
+const CB={Bard:2,Cleric:3,Druid:2,Sorcerer:4,Warlock:2,Wizard:3};
+const CA={Bard:'CHA',Cleric:'WIS',Druid:'WIS',Sorcerer:'CHA',Warlock:'CHA',Wizard:'INT',Paladin:'CHA',Ranger:'WIS'};
+const FS=[[2],[3],[4,2],[4,3],[4,3,2],[4,3,3],[4,3,3,1],[4,3,3,2],[4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2,1],[4,3,3,3,2,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1,1],[4,3,3,3,3,1,1,1,1],[4,3,3,3,3,2,1,1,1],[4,3,3,3,3,2,2,1,1]];
+const OR=['1st','2nd','3rd','4th','5th','6th','7th','8th','9th'];
+function spells(x){
+  const cl=x.cls,L=SPL[cl];if(!L)return null;
+  const lvl=x.lvl,half=cl==='Paladin'||cl==='Ranger';
+  let sl;
+  if(cl==='Warlock'){const lv=Math.min(5,Math.ceil(lvl/2));sl=Array(lv).fill(0);sl[lv-1]=lvl<2?1:lvl<11?2:lvl<17?3:4}
+  else{const eff=half?(lvl<2?0:Math.ceil(lvl/2)):lvl;sl=eff?FS[eff-1]:[]}
+  if(!sl.length)return null;
+  const lists=L.split('|').map(s=>s?s.split(','):[]);
+  const cm=x.m[CA[cl]];
+  const n=cl==='Bard'?Math.min(22,lvl+3):cl==='Sorcerer'||cl==='Warlock'?Math.min(15,lvl+1):cl==='Paladin'?Math.max(1,Math.floor(lvl/2)+cm):cl==='Ranger'?Math.min(11,Math.ceil(lvl/2)+1):Math.max(1,lvl+cm);
+  const pool=[];for(let i=1;i<=sl.length;i++)(lists[i]||[]).forEach(s=>pool.push([s,i]));
+  const by={};shuffle(pool).slice(0,n).forEach(([s,i])=>(by[i]=by[i]||[]).push(s));
+  const nc=CB[cl]?CB[cl]+(lvl>=4)+(lvl>=10):0;
+  return{sl,cant:shuffle(lists[0]).slice(0,nc),by,label:cl==='Bard'||cl==='Sorcerer'||cl==='Warlock'||cl==='Ranger'?'known':cl==='Wizard'?'spellbook picks':'prepared'};
+}
+function extra(x){
+  const p=PH[x.race],b=BD[x.bg],c=CT[x.cls],s=ST[x.race],k=KIT[x.cls];
+  const f=Math.random(),hi=Math.round(p.h[0]+f*(p.h[1]-p.h[0]));
+  x.gender=pick(['Female','Male','Non-binary']);
+  x.height=Math.floor(hi/12)+'′'+(hi%12)+'″';
+  x.weight=Math.round(p.w[0]+(f*.7+Math.random()*.3)*(p.w[1]-p.w[0]))+' lb';
+  x.age=p.a[0]+Math.floor(Math.random()*(p.a[1]-p.a[0]+1));
+  x.eyes=pick(p.e);x.hair=pick(p.hr);x.skin=pick(p.s);
+  x.faith=(x.cls==='Cleric'||x.cls==='Paladin'||Math.random()<.5)?pick(p.g):'None / unaligned';
+  x.desc=b.d;
+  x.traits=[pick(b.t),pick([c[0],s[0]])];
+  x.ideal=pick([...b.i,c[1]]);x.bond=pick([...b.b,s[1]]);x.flaw=pick([...b.f,c[2]]);
+  x.kit=k.i;x.bgItem=b.it;
+  let g=0;for(let i=0;i<k.g[0];i++)g+=d(4);x.gold=g*k.g[1];
+  const sn=SL[x.cls]||3;x.sub=x.lvl>=sn?pick(SUB[x.cls]):null;
+  x.subTxt=x.sub?'Subclass: '+x.sub:'';
+  const ca=CA[x.cls];x.sa=ca?x.pb+x.m[ca]:null;x.dc=ca?8+x.pb+x.m[ca]:null;
+  x.atk=WP[x.cls].map(w=>{
+    let a=w[3]==='S'?'STR':w[3]==='D'?'DEX':(x.m.STR>=x.m.DEX?'STR':'DEX'),dice=w[1];
+    if(w[3]==='M')dice='1d'+(x.lvl>=17?10:x.lvl>=11?8:x.lvl>=5?6:4);
+    const mm=x.m[a];
+    return{n:w[0],hit:x.pb+mm,dmg:dice+(mm?sg(mm):'')+' '+w[2]};
+  });
+  x.spl=spells(x);
+  if(x.spl){x.spl.cant=x.spl.cant.map(s=>fmt(s,x,1));Object.keys(x.spl.by).forEach(i=>x.spl.by[i]=x.spl.by[i].map(s=>fmt(s,x,0)))}
+}
+function extraHtml(x){
+  const kv=(a,v)=>'<div><span>'+a+'</span> <b>'+v+'</b></div>';
+  let h=atkHtml(x)+'<div class="card"><h3>Appearance &amp; Background</h3><div class="kv">'+[['Gender',x.gender],['Age',x.age],['Height',x.height],['Weight',x.weight],['Eyes',x.eyes],['Hair',x.hair],['Skin',x.skin],['Faith',x.faith]].map(a=>kv(a[0],a[1])).join('')+'</div><p><b>'+x.bg+':</b> '+x.desc+'</p></div>';
+  h+='<div class="card"><h3>Personality</h3><p><b>Traits:</b> '+x.traits.join(' ')+'</p><p><b>Ideal:</b> '+x.ideal+'</p><p><b>Bond:</b> '+x.bond+'</p><p><b>Flaw:</b> '+x.flaw+'</p></div>';
+  h+='<div class="card"><h3>Equipment</h3><p>'+x.kit.join(' · ')+'</p><p><b>Background gear:</b> '+x.bgItem+'</p><p class="note">Starting gold if you skip the class kit: <b>'+x.gold+' gp</b></p></div>';
+  const q=x.spl;
+  if(q){
+    h+='<div class="card"><h3>Spells</h3><p><b>Slots:</b> '+q.sl.map((n,i)=>n?OR[i]+' ×'+n:'').filter(Boolean).join(', ')+'</p>';
+    if(q.cant.length)h+='<p><b>Cantrips:</b> '+q.cant.map(spHtml).join(', ')+'</p>';
+    Object.keys(q.by).forEach(i=>h+='<p><b>'+OR[i-1]+':</b> '+q.by[i].map(spHtml).join(', ')+'</p>');
+    h+='<p class="note">Randomly chosen ('+q.label+'). Warlock Mystic Arcanum and subclass spells are not included.</p></div>';
+  }
+  return h;
+}
+const $=id=>document.getElementById(id);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const d=n=>1+Math.floor(Math.random()*n);
+const mod=s=>Math.floor((s-10)/2);
+const sg=n=>(n>=0?'+':'')+n;
+function roll4(){const r=[d(6),d(6),d(6),d(6)].sort((a,b)=>a-b);return r[1]+r[2]+r[3]}
+
+function opt(sel,label,items){sel.innerHTML='<option value="">'+label+'</option>'+items.map(i=>'<option>'+i+'</option>').join('')}
+opt($('selR'),'Random race',Object.keys(R));
+opt($('selC'),'Random class',Object.keys(C));
+$('selL').innerHTML=Array.from({length:20},(_,i)=>'<option value="'+(i+1)+'">Level '+(i+1)+'</option>').join('');
+
+let CH=null;
+function gen(){
+  const race=$('selR').value||pick(Object.keys(R));
+  const cls=$('selC').value||pick(Object.keys(C));
+  const lvl=+$('selL').value;
+  const rc=R[race],c=C[cls];
+  const order=c.p.split(' ');
+  const rolls=Array.from({length:6},roll4).sort((a,b)=>b-a);
+  const sc={};order.forEach((a,i)=>sc[a]=rolls[i]);
+  const bonus={};
+  if(rc.all)AB.forEach(a=>bonus[a]=1);
+  if(rc.b)Object.assign(bonus,rc.b);
+  if(rc.two)shuffle(AB.filter(a=>!bonus[a])).slice(0,2).forEach(a=>bonus[a]=1);
+  AB.forEach(a=>sc[a]=Math.min(20,sc[a]+(bonus[a]||0)));
+  let asi=[4,8,12,16,19].filter(l=>l<=lvl).length*2;
+  for(let i=0;i<order.length&&asi>0;i++){const a=order[i],g=Math.min(asi,20-sc[a]);sc[a]+=g;asi-=g}
+  const m={};AB.forEach(a=>m[a]=mod(sc[a]));
+  const pb=2+Math.floor((lvl-1)/4);
+  const bgName=pick(Object.keys(BG));
+  const prof=new Set(BG[bgName]);
+  const pool=(c.k?c.k.split(','):ALLSK).filter(s=>!prof.has(s));
+  shuffle(pool).slice(0,c.n).forEach(s=>prof.add(s));
+  const saves=c.s.split(' ');
+  const hp=c.hd+m.CON+(lvl-1)*((c.hd/2+1)+m.CON);
+  CH={name:pick(FN)+' '+pick(LN),race,cls,lvl,bg:bgName,al:pick(AL),sc,m,pb,prof,saves,
+    hp:Math.max(lvl,Math.round(hp)),hd:lvl+'d'+c.hd,ac:c.ac(m),init:m.DEX,sp:rc.sp,
+    pp:10+m.WIS+(prof.has('Perception')?pb:0)};
+  extra(CH);
+  render();
+}
+
+function render(){
+  const x=CH;
+  const stats=AB.map(a=>'<div class="stat" data-r="chk" data-l="'+a+' check" data-v="'+x.m[a]+'"><small>'+a+'</small><b>'+x.sc[a]+'</b>'+sg(x.m[a])+'</div>').join('');
+  const sv=AB.map(a=>{const on=x.saves.includes(a);return '<div class="'+(on?'on':'')+'" data-r="chk" data-l="'+a+' saving throw" data-v="'+(x.m[a]+(on?x.pb:0))+'"><span>'+a+'</span><span>'+sg(x.m[a]+(on?x.pb:0))+'</span></div>'}).join('');
+  const sk=ALLSK.map(s=>{const on=x.prof.has(s);return '<div class="'+(on?'on':'')+'" data-r="chk" data-l="'+s+' check" data-v="'+(x.m[AB[SK[s]]]+(on?x.pb:0))+'"><span>'+s+' <small>('+AB[SK[s]]+')</small></span><span>'+sg(x.m[AB[SK[s]]]+(on?x.pb:0))+'</span></div>'}).join('');
+  $('sheet').innerHTML='<div class="card"><h2>'+x.name+'</h2><p class="sub">Level '+x.lvl+' '+x.race+' '+x.cls+' · '+x.bg+' · '+x.al+'</p>'+(x.subTxt?'<p class="sub">'+x.subTxt+'</p>':'')+
+  '</div>'+
+  '<div class="card"><h3>Combat</h3><div class="stats">'+combatHtml(x)+'</div></div>'+
+  '<div class="card"><h3>Ability Scores</h3><div class="stats">'+stats+'</div></div>'+
+  '<div class="card"><h3>Saving Throws</h3><div class="list">'+sv+'</div></div>'+
+  '<div class="card"><h3>Skills</h3><div class="list">'+sk+'</div><p class="note">● = proficient. Stats use 4d6 drop lowest, assigned by class priority; ability score improvements are applied to your primary stats. AC assumes typical starting armor.</p></div>';
+  $('sheet').innerHTML+=extraHtml(x)+featHtml(x);$('exp').style.display='block';$('msg').textContent='';
+}
+
+function tsv(){
+  const x=CH,r=[];
+  r.push(['Name',x.name,'Race',x.race,'Class',x.cls,'Level',x.lvl]);
+  r.push(['Background',x.bg,'Alignment',x.al,'Proficiency',x.pb,'Speed',x.sp]);
+  r.push(['HP',x.hp,'AC',x.ac,'Initiative',x.init,'Hit Dice',x.hd]);
+  r.push([]);
+  r.push(['Ability','Score','Modifier','Save','Save Prof']);
+  AB.forEach(a=>{const on=x.saves.includes(a);r.push([a,x.sc[a],x.m[a],x.m[a]+(on?x.pb:0),on?'Yes':'No'])});
+  r.push([]);
+  r.push(['Skill','Ability','Bonus','Proficient']);
+  ALLSK.forEach(s=>{const on=x.prof.has(s),a=AB[SK[s]];r.push([s,a,x.m[a]+(on?x.pb:0),on?'Yes':'No'])});
+  r.push([]);r.push(['Passive Perception',x.pp]);
+  r.push([]);r.push(['Gender',x.gender,'Age',x.age,'Height',x.height,'Weight',x.weight]);
+  r.push(['Eyes',x.eyes,'Hair',x.hair,'Skin',x.skin,'Faith',x.faith]);
+  r.push(['Background Description',x.desc]);if(x.sub)r.push(['Subclass',x.sub]);
+  r.push([]);r.push(['Attack','To Hit','Damage']);x.atk.forEach(a=>r.push([a.n,a.hit,a.dmg]));
+  if(x.sa!=null)r.push(['Spell Attack',x.sa,'Spell Save DC',x.dc]);
+  r.push(['Traits',x.traits.join(' ')]);r.push(['Ideal',x.ideal]);r.push(['Bond',x.bond]);r.push(['Flaw',x.flaw]);
+  r.push([]);r.push(['Equipment',x.kit.join('; ')]);r.push(['Background Gear',x.bgItem]);r.push(['Alt Starting Gold (gp)',x.gold]);
+  const q=x.spl;
+  if(q){r.push([]);r.push(['Spell Slots',q.sl.map((n,i)=>n?OR[i]+' x'+n:'').filter(Boolean).join(', ')]);
+    if(q.cant.length)r.push(['Cantrips',q.cant.join(', ')]);
+    Object.keys(q.by).forEach(i=>r.push([OR[i-1]+' Level',q.by[i].join(', ')]))}
+  return r.map(a=>a.join('\t')).join('\n');
+}
+async function copy(){
+  const t=tsv();let ok=false;
+  try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
+  if(!ok){try{const ta=$('ta');ta.value=t;ta.select();ok=document.execCommand('copy')}catch(e){}}
+  $('msg').textContent=ok?'Copied. Now open a blank Sheet and paste into A1.':'Copy was blocked here. Try again from the page’s own tab.';
+}
+$('roll').onclick=gen;$('copy').onclick=copy;
+gen();
+</script>
+</body>
+</html>
